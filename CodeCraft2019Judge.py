@@ -4,7 +4,6 @@ import model
 import buildData
 import data
 import method
-import writeToFile
 import time
 
 logging.basicConfig(level=logging.DEBUG,
@@ -36,23 +35,7 @@ def main():
     logging.info("answer_path is %s" % (answer_path))
 
     #读出数据并存储为对应的数据结构
-    buildData.readData(road_path,car_path,cross_path,preset_answer_path)
-
-    #method.dataVisualization('carsFromEachCross')
-    #method.dataVisualization('carsToEachCross')
-    #method.dataVisualization('roadLength')
-    #method.dataVisualization('crossMap')
-
-    method.getShortestPath()
-    #method.dataVisualization('roadInPath')
-    #method.dataVisualization('shortestPathLength')
-    method.getSetOffTime()
-
-    writeToFile.writeToAns(answer_path)
-
-# to read input file
-# process
-# to write output file
+    buildData.readData(road_path,car_path,cross_path,preset_answer_path,answer_path)
 
 
 if __name__ == "__main__":

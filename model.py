@@ -15,84 +15,184 @@ class Road():
         self.isDuplex = isDuplex  #标记是否为双向道路，1代表是双向道路，0代表不是
         self.initLanes()
         self.weight = self.roadLen/(self.maxSpeed*self.laneNum)
+        #在本路口等待出发的车辆，[1]是正方向队列，[0]是反方向队列，[*][0]是优先车辆，[*][1]是非优先车辆
+        self.carInInitList = [[[],[]],[[],[]]]
 
     def initLanes(self):
         '''
         初始化此道路上各个车道的车辆情况;
         每个车道都用一个列表表示当前时刻车道上的车的队列;
         先进入的车辆在列表的尾部，后进入的车辆在列表首部;
-        如果是双向车道，forwardLanes表示正向车道情况，backwardLanes表示反向车道情况；
+        如果是双向车道，[1]表示正向车道情况，[0]表示反向车道情况；
         '''
-        self.forwardLanes = [[] for i in range(self.laneNum)]
-        if self.isDuplex:
-            self.backwardLanes = [[] for i in range(self.laneNum)]
+        self.lanes = [[[] for i in range(self.laneNum)] for j in range(2)]
+        #该道路两个方向上的等待车辆的优先级队列
+        self.carSequeue = [[] for j in range(2)]
 
-    def carIn(self,carNo,laneNo,isForward):
+    def carIn(self,carNo,laneNo,direction):
         '''
         车辆驶入道路;
         carNo:进入的车辆的编号;laneNo:进入的车道编号;
-        isForward:True代表驶入正向车道，False代表驶入反向车道；
+        direction:1代表驶入正向车道，0代表驶入反向车道；
         '''
-        if isForward:
-            self.forwardLanes[laneNo].insert(0,carNo)
-        else:
-            self.backwardLanes[laneNo].insert(0,carNo)
+        self.lanes[direction][laneNo].insert(0,carNo)
 
-    def carOut(self,laneNo,isForward):
+    def carOut(self,laneNo,direction):
         '''
         车辆驶出道路;
         laneNo:驶出车辆所在车道的编号；
-        isForward:True代表驶出正向车道，False代表驶出反向车道；
+        direction:1代表驶出正向车道，0代表驶出反向车道；
         '''
-        if isForward:
-            self.forwardLanes[laneNo].pop()
-        else:
-            self.backwardLanes[laneNo].pop()
+        self.lanes[direction][laneNo].pop()
 
-    def updateCars(self,timeNow):
+    def updateAllCars(self,timeNow):
         '''
         遍历该道路上的所有车辆，对于不必进入waiting状态的车辆更新车辆的状态;
         '''
+        if self.isDuplex:
+            directions = [0,1]
+        else:
+            directions = [1]
         for laneNo in range(self.laneNum):
-            #首先遍历正向车道上的车辆；
-            carNum = len(self.forwardLanes[laneNo])     #该车道上的车辆数目
-            roadEnd = self.roadLen      #车辆能行驶到的最大位置，可能是道路的尽头，也可能是前一辆车的位置
-            for i in range(carNum-1,-1,-1):
-                #行驶速度为道路限速和车辆自身最大速度的较小者
-                car = data.carDict[self.forwardLanes[laneNo][i]]
-                #如果该车辆仍未更新
-                if car.time < timeNow:
+            for direction in directions:
+                carNum = len(self.lanes[direction][laneNo])     #该车道上的车辆数目
+                roadEnd = self.roadLen      #车辆能行驶到的最大位置，可能是道路的尽头，也可能是前一辆车的位置
+                statusAhead = 1     #该车辆前方车辆的状态，1代表waitting
+                for i in range(carNum-1,-1,-1):
+                    #行驶速度为道路限速和车辆自身最大速度的较小者
+                    car = data.carDict[self.lanes[direction][laneNo][i]]
                     speed = min(self.maxSpeed,car.maxSpeed)
                     #假定按此速度行驶，可到达的位置为newPosition
                     newPosition = car.position + speed
                     #如果车辆驶出能行驶的最大位置，则进入等待状态，由路口进行调度
                     if newPosition >= roadEnd:
-                        car.startWaiting()
-                        roadEnd = car.position
-                    else:
-                        car.setPosition(newPosition)
-                        roadEnd = newPosition
-                        car.setTime(timeNow)
-            if self.isDuplex:
-                #然后遍历反向车道上的车辆；
-                carNum = len(self.backwardLanes[laneNo])     #该车道上的车辆数目
-                roadEnd = self.roadLen      #车辆能行驶到的最大位置，可能是道路的尽头，也可能是前一辆车的位置
-                for i in range(carNum-1,-1,-1):
-                    #行驶速度为道路限速和车辆自身最大速度的较小者
-                    car = data.carDict[self.backwardLanes[laneNo][i]]
-                    #如果该车辆仍未更新
-                    if car.time < timeNow:
-                        speed = min(self.maxSpeed,car.maxSpeed)
-                        #假定按此速度行驶，可到达的位置为newPosition
-                        newPosition = car.position + speed
-                        #如果车辆驶出能行驶的最大位置，则进入等待状态，由路口进行调度
-                        if newPosition >= roadEnd:
+                        if statusAhead == 1:
                             car.startWaiting()
                             roadEnd = car.position
                         else:
-                            car.setPosition(newPosition)
-                            roadEnd = newPosition
-                            car.setTime(timeNow)
+                            car.setPosition(newPosition-1)
+                            roadEnd = newPosition-1
+                            car.endWaiting()
+                            statusAhead = 0
+                    else:
+                        car.setPosition(newPosition)
+                        roadEnd = newPosition
+                        car.endWaiting()
+                        statusAhead = 0
+        #优先车辆上路
+        self.runCarInInitList(timeNow,True)
+    
+    def updateCars(self,timeNow,direction,laneNo):
+        '''
+        遍历某方向某车道上的车；
+        '''
+        lane = self.lanes[direction][laneNo]
+        carNum = len(lane)     #该车道上的车辆数目
+        roadEnd = self.roadLen      #车辆能行驶到的最大位置，可能是道路的尽头，也可能是前一辆车的位置
+        statusAhead = 1     #该车辆前方车辆的状态，1代表waitting
+        for i in range(carNum-1,-1,-1):
+            #行驶速度为道路限速和车辆自身最大速度的较小者
+            car = data.carDict[lane[i]]
+            #如果该车辆仍未进入终止状态
+            if not car.finish:
+                speed = min(self.maxSpeed,car.maxSpeed)
+                #假定按此速度行驶，可到达的位置为newPosition
+                newPosition = car.position + speed
+                #如果车辆驶出能行驶的最大位置，则继续等待
+                if newPosition >= roadEnd:
+                    if statusAhead == 1:
+                        car.startWaiting()
+                        roadEnd = car.position
+                    else:
+                        car.setPosition(newPosition-1)
+                        roadEnd = newPosition-1
+                        car.endWaiting()
+                        statusAhead = 0
+                else:
+                    car.setPosition(newPosition)
+                    roadEnd = newPosition
+                    car.endWaiting()
+                    statusAhead = 0
+            else:
+                break
+        #优先车辆上路
+        self.runCarInInitList(timeNow,True,dire=direction)
+
+    def runCarInInitList(self,timeNow,priority,dire=2):
+        #priority为True，只允许优先车辆上路;direction表示上路车辆进入道路的方向，1表示正向,0表示反向,2表示两个方向都变遍历；
+        if dire == 1:
+            directions = [1]
+        elif dire == 0:
+            directions = [0]
+        else:
+            directions = [0,1]
+        for direction in directions:
+            #先计算该道路在该方向上各车道是否还有位置进入，求出能进入的车道数和能行驶的最大距离
+            freeDistance = np.zeros(self.laneNum)
+            statusAhead = []        #对应车道最后一辆车的状态
+            for i in range(self.laneNum):
+                car = data.carDict[self.lanes[direction][i][0]]
+                freeDistance[i] = car.position-1
+                statusAhead.append(car.finish)
+            laneNo = 0
+            endCondition = 1    #优先车辆无法进入道路的终止条件：1代表是因为未到达出发时间而无法进入道路，那么非优先车辆仍有机会进入道路；
+            #0代表因为道路没有空位或前方有等待车辆阻挡而无法进入道路，那么非优先车辆因优先级较低，不能进入道路；
+            while laneNo < self.laneNum:
+                if freeDistance[laneNo] == 0:
+                    laneNo += 1
+                    continue
+                car = data.carDict[self.carInInitList[direction][0][-1]]       #取优先级最高的一辆优先车辆
+                if car.setOffTime > timeNow:
+                    break
+                speed = min(car.maxSpeed,self.maxSpeed)
+                if speed <= freeDistance[laneNo]:   #如果未被阻挡，直接进入道路
+                    freeDistance[laneNo] = speed-1
+                    self.carIn(car.carNo,laneNo,True)
+                    car.moveToNextRoad(speed,laneNo)
+                    self.carInInitList[direction][0].pop()
+                elif statusAhead[laneNo]:   #如果被阻挡，但前车是终止状态
+                    self.carIn(car.carNo,laneNo,True)
+                    car.moveToNextRoad(freeDistance[laneNo],laneNo)
+                    freeDistance[laneNo] = freeDistance[laneNo]-1
+                    self.carInInitList[direction][0].pop()
+                else:                       #被阻挡，且前车为等待状态，不得上路
+                    endCondition = 0
+                    break
+            if not priority:
+                if endCondition == 1 or laneNo < self.laneNum:
+                    while laneNo < self.laneNum:
+                        if freeDistance[laneNo] == 0:
+                            laneNo += 1
+                            continue
+                        car = data.carDict[self.carInInitList[direction][1][-1]]       #取优先级最高的一辆非优先车辆
+                        if car.setOffTime > timeNow:
+                            break
+                        speed = min(car.maxSpeed,self.maxSpeed)
+                        if speed <= freeDistance[laneNo]:   #如果未被阻挡，直接进入道路
+                            freeDistance[laneNo] = speed-1
+                            self.carIn(car.carNo,laneNo,True)
+                            car.moveToNextRoad(speed,laneNo)
+                            self.carInInitList[direction][1].pop()
+                        elif statusAhead[laneNo]:   #如果被阻挡，但前车是终止状态
+                            self.carIn(car.carNo,laneNo,True)
+                            car.moveToNextRoad(freeDistance[laneNo],laneNo)
+                            freeDistance[laneNo] = freeDistance[laneNo]-1
+                            self.carInInitList[direction][1].pop()
+                        else:                       #被阻挡，且前车为等待状态，不得上路
+                            break
+    
+    def createCarSequeue(self,dire):
+        '''
+        构建等待车辆的优先级队列；
+        '''
+        if dire == 1:
+            directions = [1]
+        elif dire == 0:
+            directions = [0]
+        else:
+            directions = [0,1]
+        for direction in directions:
+            pass
 
 class Cross():
 
@@ -107,14 +207,13 @@ class Cross():
         '''
         确定每条道路进入该路口的方向是正向(forward)还是反向(backward)的;
         '''
-        self.roadsDirections=[]     #1代表正向，0代表反向，-1无意义
+        self.roadsDirections=dict()     #1代表正向，0代表反向
         for roadNo in self.roads:
-            if roadNo == -1:
-                self.roadsDirections.append(-1)
-            elif data.roadDict[roadNo].toId == self.crossNo:
-                self.roadsDirections.append(1)
-            else:
-                self.roadsDirections.append(0)
+            if roadNo != -1:
+                if data.roadDict[roadNo].toId == self.crossNo:
+                    self.roadsDirections.update({roadNo:1})
+                else:
+                    self.roadsDirections.update({roadNo:0})
 
     def confirmDorLorR(self):
         '''
@@ -165,92 +264,64 @@ class Cross():
     def updateCars(self):
         pass
 
-    #设定该路口的绝对坐标值
-    def setCoordinate(self,x,y):
-        self.coordinate = (x,y)
-
-    def getCoordinate(self):
-        return self.coordinate
-
-    #判断该路口是否已经有坐标信息
-    def hasCoordinate(self):
-        if self.coordinate == None:
-            return False
-        else:
-            return True
-
 class Car():
 
-    def __init__(self,carNo=None,fromId=None,toId=None,maxSpeed=None,planTime=None,isPriority=None,isPreset=None):
+    def __init__(self,carNo=None,fromId=None,toId=None,maxSpeed=None,planTime=None,isPriority=0,isPreset=0):
         self.carNo = carNo          #车辆编号
         self.fromId = fromId        #出发地路口编号
         self.toId = toId            #目的地路口编号
         self.maxSpeed = maxSpeed    #车辆自身最大速度
         self.planTime = planTime    #车辆计划出发时间
-        self.runing = False         #该车辆是否已经出发，True代表已经出发
-        self.done = False           #该车辆是否已经到达，True代表已经到达
         self.waiting = False        #该车辆是否处于等待状态，True代表处于等待状态
-        self.time = 0               #该车辆目前所处的时刻，如果与系统时间相同，则表示该车辆的状态已经更新过了
+        self.finish = False         #True代表该车进入终止状态
         self.position = -1          #该车辆在车道上的位置
+        self.laneNo = -1
+        self.roadNo = -1
         self.setOffTime = self.planTime     #该车辆的出发时间
         self.isPriority = isPriority
         self.isPreset = isPreset
+        self.path = []      #这辆车的路径
+        self.nextRoad = 0   #该车辆要进入的下一个道路在path中的编号
 
-    def setPosition(self,position):
+    def setPosition(self,position,laneNo=None):
         '''
         设定当前车辆的位置;
         '''
         self.position = position
+        if laneNo != None:
+            self.laneNo = laneNo
 
     def startWaiting(self):
         '''
         让车辆进入等待状态;
         '''
         self.waiting = True
+        self.finish = False
 
     def endWaiting(self):
         '''
         结束等待状态;
         '''
         self.waiting = False
-
-    def setTime(self,time):
-        self.time = time
+        self.finish = True
 
     def setSetOffTime(self,time):
         self.setOffTime = time
 
-class Graph():
-    
-    def __init__(self):
-        self.nodes = dict()     #存储节点的词典
-        self.edges = dict()     #存储边的词典
+    def addToPath(self,roadNo):
+        self.path.append(roadNo)
 
-    def addNode(self,nodeId,edges):
-        self.nodes.update({nodeId:Node(edges)})
+    def moveToNextRoad(self,position,laneNo):
+        self.position = position
+        self.laneNo = laneNo
+        self.roadNo = self.path[self.nextRoad]
+        self.nextRoad += 1
 
-    def addEdge(self,edgeId,fromId,toId,weight,isDuplex):
-        self.edges.update({edgeId:Edge(fromId,toId,weight,isDuplex)})
-
-    def updateWeight(self,edgeId,newWeight):
-        self.edges[edgeId].updateWeight(newWeight)
-
-class Node():
-    
-    def __init__(self,value):
-        self.value = value
-        self.nextNodes = []
-
-class Edge():
-    
-    def __init__(self,fromId,toId,weight,isDuplex):
-        self.fromId = fromId    #该边的起点
-        self.toId = toId        #该边的终点
-        self.weight = weight    #该边对应的权值
-        self.isDuplex = isDuplex    #是否为双向，1代表双向，0代表单项
-
-    def updateWeight(self,newWeight):
-        self.weight = newWeight
+    def getNextRoad(self):
+        if self.nextRoad < len(self.path):
+            return self.path[self.nextRoad]
+        else:
+            return -1   #-1表示该车前方就是目的路口，不再需要进入下一道路
 
 #二维字典
 class TwoDDict():
@@ -273,18 +344,6 @@ class TwoDDict():
             self.dict[x].update({y: value})
         else:
             self.dict.update({x:{y: value}})
-
-    #添加值为列表
-    def addAsList(self,x,y):
-        if x in self.dict:
-            self.dict[x].update({y: []})
-        else:
-            self.dict.update({x:{y: []}})
-    
-    #更新列表中的值
-    def updateAsList(self,x,y,value):
-        if self.isIn(x,y):
-            self.dict[x][y].append(value)
 
     #删除一个值
     def delete(self,x,y):
@@ -309,47 +368,3 @@ class TwoDDict():
         for keyX in self.dict:
             for keyY in self.dict[keyX]:
                 logging.info(keyX,keyY,self.dict[keyX][keyY])
-
-#三维字典
-class ThreeDDict():
-
-    def __init__(self):
-        self.dict = dict()
-
-    def value(self,x,y,z):
-        '''
-        返回存储的值;
-        '''
-        if self.isIn(x,y,z):
-            return self.dict[x][y][z]
-        else:
-            return None
-
-    #添加或更新一个值
-    def update(self,x,y,z,value):
-        if x in self.dict:
-            if y in self.dict[x]:
-                self.dict[x][y].update({z:value})
-            else:
-                self.dict[x].update({y:{z:value}})
-        else:
-            self.dict.update({x:{y:{z:value}}})
-
-    #删除一个值
-    def delete(self,x,y,z):
-        if x in self.dict:
-            if y in self.dict[x]:
-                if z in self.dict[x][y]:
-                    self.dict[x][y].pop(z)
-                if self.dict[x][y] == {}:
-                    self.dict[x].pop(y)
-                if self.dict[x] == {}:
-                    self.dict.pop(x)
-
-    #判断一个key值是否在字典内
-    def isIn(self,x,y,z):
-        if x in self.dict:
-            if y in self.dict[x]:
-                if z in self.dict[x][y]:
-                    return True
-        return False

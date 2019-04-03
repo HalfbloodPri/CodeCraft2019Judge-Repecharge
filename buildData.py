@@ -4,7 +4,7 @@ import data
 import time
 import logging
 
-def readData(roadFilePath,carFilePath,crossFilePath,preAnswerFilePath):
+def readData(roadFilePath,carFilePath,crossFilePath,preAnswerFilePath,answerFilePath):
     '''
     读出数据;
     '''
@@ -13,19 +13,22 @@ def readData(roadFilePath,carFilePath,crossFilePath,preAnswerFilePath):
     with open(crossFilePath,'r') as crossDataFile:
         crossData = crossDataFile.read().splitlines()
     length = len(crossData)
-    newCrossNoDict = dict()      #文件中路口编号到新的路口编号的映射，新的路口编号从0开始依次递增；
+    #这里给路口重新编号是因为寻找最短路径时需要建立邻接表；如果只是做判题器的话，好像不需要重新编号；
     newCrossNo = 0      #新的路口编号
     for i in range(length):
         if crossData[i][0] == '#':
             continue
         crossInfo = tuple(eval(crossData[i]))
-        newCrossNoDict.update({crossInfo[0]:newCrossNo})
+        data.origiCrossNoToNewNo.update({crossInfo[0]:newCrossNo})
         data.crossDict.update({newCrossNo:model.Cross(crossNo=newCrossNo,roadNorth=crossInfo[1],\
             roadEast=crossInfo[2],roadSouth=crossInfo[3],roadWest=crossInfo[4])})
         data.crossList.append(newCrossNo)
+        data.originalCrossList.append(crossInfo[0])
         data.newCrossNoToOrigiNo.update({newCrossNo:crossInfo[0]})
         newCrossNo += 1
     data.crossList.sort()
+    #在行车时，需要按编号从小到大遍历路口，因此还需要原编号的排序表
+    data.originalCrossList.sort()
 
     #读出道路信息
     with open(roadFilePath,'r') as roadDataFile:
@@ -36,20 +39,13 @@ def readData(roadFilePath,carFilePath,crossFilePath,preAnswerFilePath):
             continue
         roadInfo = tuple(eval(roadData[i]))
         data.roadDict.update({roadInfo[0]:model.Road(roadNo=roadInfo[0],roadLen=roadInfo[1],\
-            maxSpeed=roadInfo[2],laneNum=roadInfo[3],fromId=newCrossNoDict[roadInfo[4]],\
-            toId=newCrossNoDict[roadInfo[5]],isDuplex=roadInfo[6])})
+            maxSpeed=roadInfo[2],laneNum=roadInfo[3],fromId=data.origiCrossNoToNewNo[roadInfo[4]],\
+            toId=data.origiCrossNoToNewNo[roadInfo[5]],isDuplex=roadInfo[6])})
         data.roadList.append(roadInfo[0])
-        if roadInfo[2] > data.maxSpeed:
-            data.maxSpeed = roadInfo[2]
-        if roadInfo[2] < data.minSpeed:
-            data.minSpeed = roadInfo[2]
-        if roadInfo[1] > data.maxRoadLength:
-            data.maxRoadLength = roadInfo[1]
-        if roadInfo[1] < data.minRoadLength:
-            data.minRoadLength = roadInfo[1]
     data.roadList.sort()
 
     #读出车辆信息
+    carsDict = dict()   #用于读入answer时判断车辆是否在图中，以及是否所有车辆已读入完毕
     with open(carFilePath,'r') as carDataFile:
         carData = carDataFile.read().splitlines()
     length = len(carData)
@@ -57,17 +53,86 @@ def readData(roadFilePath,carFilePath,crossFilePath,preAnswerFilePath):
         if carData[i][0] == '#':
             continue
         carInfo = tuple(eval(carData[i]))
-        data.carDict.update({carInfo[0]:model.Car(carNo=carInfo[0],fromId=newCrossNoDict[carInfo[1]],\
-            toId=newCrossNoDict[carInfo[2]],maxSpeed=carInfo[3],planTime=carInfo[4],isPriority=carInfo[5],\
+        data.carDict.update({carInfo[0]:model.Car(carNo=carInfo[0],fromId=data.origiCrossNoToNewNo[carInfo[1]],\
+            toId=data.origiCrossNoToNewNo[carInfo[2]],maxSpeed=carInfo[3],planTime=carInfo[4],isPriority=carInfo[5],\
             isPreset=carInfo[6])})
         data.carList.append(carInfo[0])
-        if carInfo[3] not in data.speeds:
-            data.speeds.append(carInfo[3])
-        if carInfo[3] > data.maxSpeed:
-            data.maxSpeed = carInfo[3]
-        if carInfo[3] < data.minSpeed:
-            data.minSpeed = carInfo[3]
+        carsDict.update({carInfo[0]:True})
     data.carList.sort()
+
+    #读入路径信息，即preAnswer和answer
+    #先读preAnswer,不需要做合法性判断
+    with open(preAnswerFilePath,'r') as preAnswerFile:
+        preAnswerData = preAnswerFile.read().splitlines()
+    length = len(preAnswerData)
+    for i in range(length):
+        if preAnswerData[i][0] == '#':
+            continue
+        pathInfo = tuple(eval(preAnswerData[i]))
+        car = data.carDict[pathInfo[0]]
+        car.setSetOffTime(pathInfo[1])
+        for j in range(2,len(pathInfo)):
+            car.addToPath(pathInfo[j])
+        carsDict.pop(pathInfo[0])
+    #读入answer
+    with open(answerFilePath,'r') as answerFile:
+        answerData = answerFile.read().splitlines()
+    length = len(answerData)
+    for i in range(length):
+        if answerData[i][0] == '#':
+            continue
+        pathInfo = tuple(eval(answerData[i]))
+        #判断路径是否包含了必要的信息，即长度是否大于等于3
+        if len(pathInfo) < 3:
+            logging.info('Car:%d, illegal path!' % (pathInfo[0]))
+            exit(1)
+        #如果车辆已经在preAnswer中，或根本不存在，退出
+        if pathInfo[0] not in carsDict:
+            logging.info('Car:%d does not exist in the map or already exists in pre_answer!' % (pathInfo[0]))
+            exit(1)
+        car = data.carDict[pathInfo[0]]
+        #如果车辆的实际出发时间小于计划出发时间，退出
+        if car.planTime > pathInfo[1]:
+            logging.info('Car:%d, set off time:%d, plan time:%d, illegal!' % (pathInfo[0],pathInfo[1],car.planTime))
+            exit(1)
+        car.setSetOffTime(pathInfo[1])
+        #判断路径起点是否合法
+        if pathInfo[2] not in data.roadDict:
+            logging.info('Car:%d, road:%d does not exist in the map!' % (pathInfo[0],pathInfo[2]))
+            exit(1)
+        road = data.roadDict[pathInfo[2]]
+        if road.fromId == car.fromId:
+            lastCross = road.toId
+        elif road.toId == car.fromId and road.isDuplex:
+            lastCross == road.fromId
+        else:
+            logging.info('Car:%d, road:%d, illegal begin road!' % (pathInfo[0],pathInfo[2]))
+            exit(1)
+        car.addToPath(pathInfo[2])
+        #判断路径中的道路是否连续
+        for j in range(3,len(pathInfo)):
+            if pathInfo[j] not in data.roadDict:
+                logging.info('Car:%d, road:%d does not exist in the map!' % (pathInfo[0],pathInfo[j]))
+                exit(1)
+            road = data.roadDict[pathInfo[j]]
+            if road.fromId == lastCross:
+                lastCross = road.toId
+            elif road.toId == lastCross and road.isDuplex:
+                lastCross == road.fromId
+            else:
+                logging.info('Car:%d, road:%d, discrete road!' % (pathInfo[0],pathInfo[j]))
+                exit(1)
+            car.addToPath(pathInfo[j])
+        #判断路径终点是否合法
+        if lastCross != car.toId:
+            logging.info('Car:%d, road:%d, illegal end road!' % (pathInfo[0],pathInfo[-1]))
+            exit(1)
+        carsDict.pop(pathInfo[0])
+    if bool(carsDict):
+        logging.info('There are cars not in the answer!')
+        for car in carsDict.values():
+            logging.info(car.carNo)
+        exit(1)
 
     '''
     接下来进行data中其他数据的初始化；
@@ -77,129 +142,37 @@ def readData(roadFilePath,carFilePath,crossFilePath,preAnswerFilePath):
         cross.confirmRoadsDirection()
     #初始化从每个路口出发的车辆
     initCarsFromEachCross()
-    #初始化到达每个路口的车辆
-    initCarsToEachCross()
-    #初始化路口之间的道路编号
-    initRoadBetweenCrossed()
-    #初始化路口地图
-    #buildMap()
 
     logging.info('Initial data:%f' % (time.time()-timeBegin))
 
-def initRoadBetweenCrossed():
-    data.roadBetweenCrosses = model.TwoDDict()
-    for road in data.roadDict.values():
-        data.roadBetweenCrosses.update(road.fromId,road.toId,road.roadNo)
-        if road.isDuplex:
-            data.roadBetweenCrosses.update(road.toId,road.fromId,road.roadNo)
-
-def initCarsToEachCross():
-    '''
-    初始化到达每个路口的车辆；
-    '''
-    crossNum = len(data.crossList)
-    data.carsToEachCross = [[] for i in range(crossNum)]
-    for car in data.carDict.values():
-        data.carsToEachCross[car.toId].append(car.carNo)
-
 def initCarsFromEachCross():
     '''
-    初始化在每个路口等待出发的车辆，并排序；
-    按照速度越快优先级越高，计划出发时间越早优先级越高，编号越小优先级越高的原则排序；
-    且优先级 速度>计划出发时间>编号；
+    初始化在每个道路上等待出发的车辆，并排序；
+    每个道路的待出发车辆都分成优先车辆和非优先车辆两个队列；
+    当两队列内最高优先级的车辆都可以出发时，优先车辆的优先级高于非优先车辆；
+    每个队列内的优先级按照实际出发时间越早优先级越高，编号越小优先级越高的原则排序；
     优先级越高越靠近列表尾部；
     '''
-    crossNum = len(data.crossList)
-    data.carsFromEachCross = [[] for i in range(crossNum)]
     for car in data.carDict.values():
+        road = data.crossDict[car.path[0]]
+        cross = data.crossDict[car.fromId]
+        roadDirection = cross.roadsDirections[road.roadNo]  #0代表是正向驶入此路，1代表反向驶入此路
+        roadDirection = int(not bool(roadDirection))        #改为1代表是正向驶入此路，0代表反向驶入此路
+        if car.isPriority:
+            sequeue = road.carInInitList[roadDirection][0]       #优先车辆的队列
+        else:
+            sequeue = road.carInInitList[roadDirection][1]       #非优先车辆的队列
         i = 0
-        while i<(len(data.carsFromEachCross[car.fromId])):
-            if data.carDict[data.carsFromEachCross[car.fromId][i]].maxSpeed > car.maxSpeed:
-                data.carsFromEachCross[car.fromId].insert(i,car.carNo)
+        while i<(len(sequeue)):
+            if data.carDict[sequeue[i]].setOffTime < car.setOffTime:
+                sequeue.insert(i,car.carNo)
                 break
-            elif data.carDict[data.carsFromEachCross[car.fromId][i]].maxSpeed == car.maxSpeed \
-                and data.carDict[data.carsFromEachCross[car.fromId][i]].planTime < car.planTime:
-                data.carsFromEachCross[car.fromId].insert(i,car.carNo)
-                break
-            elif data.carDict[data.carsFromEachCross[car.fromId][i]].maxSpeed == car.maxSpeed \
-                and data.carDict[data.carsFromEachCross[car.fromId][i]].planTime == car.planTime\
-                and data.carDict[data.carsFromEachCross[car.fromId][i]].carNo < car.carNo:
-                data.carsFromEachCross[car.fromId].insert(i,car.carNo)
+            elif data.carDict[sequeue[i]].setOffTime == car.setOffTime \
+                and sequeue[i] < car.carNo:
+                sequeue.insert(i,car.carNo)
                 break
             else:
                 i += 1
         #如果没有在列表中发现优先级比它高的车辆，则直接加入到列表尾部
-        if i == len(data.carsFromEachCross[car.fromId]):
-            data.carsFromEachCross[car.fromId].append(car.carNo)
-
-def buildMap():
-    '''
-    构建map的目的是寻找最靠近“中心”的的路口，作为树形图的根节点；
-    这个map构建假设道路都是直线，即使道路是弯曲的，对我们的目的影响也不大；
-    我们可以假设路口0的第一条道路是北方向，那么就可以把其他所有的道路的方向确定下来；
-    '''
-    #起始路口0坐标值设为（0,0），并以此路口为起点遍历得到所有路口的坐标值
-    data.crossMap = model.TwoDDict()
-    data.crossMap.update(0,0,0)
-    data.crossDict[0].setCoordinate(0,0)
-
-    #定义一个迭代函数，用于遍历
-    crossToRun = []
-    northRoadNoToBe = []
-    def runOverCross():
-        if crossToRun == []:
-            return
-        crossLocal = data.crossDict[crossToRun.pop()]
-        northRoadNo = northRoadNoToBe.pop()
-        #按顺序遍历北，东，南，西方向所连接的路口
-        for directionNo in range(4):
-            #根据路口所连接的各条道路遍历其他路口
-            #roadNo即是某个方向上连接的道路的编号
-            roadNo = crossLocal.roads[directionNo]
-            if (roadNo == -1) or (roadNo not in data.roadDict):
-                #-1代表该路口在该方向上没有道路,不在字典中说明道路未被记录，跳过
-                continue
-            else:
-                road = data.roadDict[roadNo]
-                #下面得到该道路另一端路口的编号
-                if road.fromId == crossLocal.crossNo:
-                    crossRemoteNo = road.toId
-                else:
-                    crossRemoteNo = road.fromId
-                crossRemote = data.crossDict[crossRemoteNo]
-                #如果该路口已经有坐标信息了，则不再需要进一步操作
-                if crossRemote.hasCoordinate():
-                    continue
-                else:
-                    #根据方向和路长计算出远端路口的坐标
-                    #并且需要确定远端路口北方向道路的编号
-                    roadInNo = crossRemote.roads.index(roadNo)#此道路在远端路口的道路列表中的编号
-                    remoteNorthRoadNo = None #远方路口中北方道路的序号
-                    coordinateLocal = crossLocal.getCoordinate()
-                    #roadLen = road.roadLen
-                    roadLen = 1
-                    if directionNo == northRoadNo:        #北
-                        xRemote = coordinateLocal[0]
-                        yRemote = coordinateLocal[1]+roadLen
-                        remoteNorthRoadNo = (roadInNo+2)%4
-                    elif directionNo == (northRoadNo+1)%4:      #东
-                        xRemote = coordinateLocal[0]+roadLen
-                        yRemote = coordinateLocal[1]
-                        remoteNorthRoadNo = (roadInNo+1)%4
-                    elif directionNo == (northRoadNo+2)%4:      #南
-                        xRemote = coordinateLocal[0]
-                        yRemote = coordinateLocal[1]-roadLen
-                        remoteNorthRoadNo = roadInNo
-                    else:                       #西
-                        xRemote = coordinateLocal[0]-roadLen
-                        yRemote = coordinateLocal[1]
-                        remoteNorthRoadNo = (roadInNo+3)%4
-                    crossRemote.setCoordinate(xRemote,yRemote)
-                    data.crossMap.update(xRemote,yRemote,crossRemoteNo)
-                    crossToRun.insert(0,crossRemoteNo)
-                    northRoadNoToBe.insert(0,remoteNorthRoadNo)
-        runOverCross()
-
-    crossToRun.append(0)
-    northRoadNoToBe.append(0)
-    runOverCross()
+        if i == len(sequeue):
+            sequeue.append(car.carNo)
