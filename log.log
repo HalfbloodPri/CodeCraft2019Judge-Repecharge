@@ -1,0 +1,21 @@
+[2019-04-04 20:11:28] INFO [readData: buildData.py, 123] Car:46058, road:6176, discrete road!
+[2019-04-04 20:14:54][readData: buildData.py, 123] Car:46058, road:6176, lastCross:39, discrete road!
+[2019-04-04 20:16:53][readData: buildData.py, 123] Car:46058, road:6176, lastCross:1112, discrete road!
+[2019-04-04 20:37:34][readData: buildData.py, 120] Car:46058, road:6176, lastCross:1112, discrete road!
+[2019-04-04 20:40:12][readData: buildData.py, 120] Car:23984, road:6942, lastCross:1265, discrete road!
+[2019-04-04 20:45:30][readData: buildData.py, 88] Car:100922 does not exist in the map or already exists in pre_answer!
+[2019-04-04 20:50:02][readData: buildData.py, 145] Initial data:6.713108
+[2019-04-04 20:54:30][readData: buildData.py, 145] Initial data:6.587443
+[2019-04-04 20:58:21][readData: buildData.py, 145] Initial data:6.587456
+[2019-04-04 21:03:12][readData: buildData.py, 145] Initial data:6.623478
+[2019-04-04 21:04:25][readData: buildData.py, 145] Initial data:6.654203
+[2019-04-04 21:05:01][readData: buildData.py, 145] Initial data:6.855076
+[2019-04-04 21:07:45][readData: buildData.py, 145] Initial data:6.667230
+[2019-04-04 21:08:44][readData: buildData.py, 145] Initial data:6.581678
+[2019-04-04 21:11:42][readData: buildData.py, 145] Initial data:6.612137
+[2019-04-04 21:15:07][readData: buildData.py, 145] Initial data:6.606252
+[2019-04-04 21:17:28][readData: buildData.py, 145] Initial data:6.791548
+[2019-04-04 21:19:19][readData: buildData.py, 145] Initial data:9.208395
+[2019-04-04 21:21:44][readData: buildData.py, 145] Initial data:6.695881
+[2019-04-04 21:23:29][readData: buildData.py, 145] Initial data:6.636722
+[2019-04-04 21:41:37][readData: buildData.py, 145] Initial data:6.855434
