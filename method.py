@@ -12,8 +12,14 @@ def runOverRoads(timeNow):
         data.roadDict[data.roadList[i]].updateAllCars(timeNow)
 
 def runOverCross(timeNow):
+    crossesDoneNum = 0
     for i in range(len(data.crossList)):
-        data.crossDict[data.crossList[i]].updateRoads(timeNow)
+        crossesDoneNum += data.crossDict[data.crossList[i]].updateRoads(timeNow)
+    return crossesDoneNum
+
+def creatAllCarSequeue():
+    for i in range(len(data.crossList)):
+        data.crossDict[data.crossList[i]].sortWaitingCarsOnEachRoad()
 
 def driveCarInInitList(timeNow):
     for i in range(len(data.roadList)):
@@ -21,5 +27,8 @@ def driveCarInInitList(timeNow):
 
 def runTheMap(timeNow):
     runOverRoads(timeNow)
-    runOverCross(timeNow)
+    creatAllCarSequeue()
+    while True:
+        if runOverCross(timeNow) == len(data.crossList):
+            break
     driveCarInInitList(timeNow)

@@ -2,6 +2,7 @@
 import numpy as np
 import data
 import logging
+import time
 
 class Road():
 
@@ -104,9 +105,10 @@ class Road():
                 newPosition = car.position + speed
                 #如果车辆驶出能行驶的最大位置，则继续等待，除非已到达终点
                 if newPosition >= roadEnd:
-                    if car.getNextRoad() == -1 and roadEnd == self.roadLen + 1:
+                    if (car.getNextRoad() == -1) and (roadEnd == (self.roadLen + 1)):
                         carsReachEnding += 1
                         data.carsDoneNum += 1
+                        car.endWaiting()
                     else:
                         if statusAhead == 1:
                             car.startWaiting()
@@ -195,11 +197,11 @@ class Road():
                         speed = min(car.maxSpeed,self.maxSpeed)
                         if speed <= freeDistance[laneNo]:   #如果未被阻挡，直接进入道路
                             freeDistance[laneNo] = speed-1
-                            self.carIn(car.carNo,laneNo,True)
+                            self.carIn(car.carNo,laneNo,direction)
                             car.moveToNextRoad(speed,laneNo)
                             self.carInInitList[direction][1].pop()
                         elif statusAhead[laneNo]:   #如果被阻挡，但前车是终止状态
-                            self.carIn(car.carNo,laneNo,True)
+                            self.carIn(car.carNo,laneNo,direction)
                             car.moveToNextRoad(freeDistance[laneNo],laneNo)
                             freeDistance[laneNo] = freeDistance[laneNo]-1
                             self.carInInitList[direction][1].pop()
@@ -232,6 +234,8 @@ class Road():
                         j = 0
                         while j < len(self.carSequeue[direction]):
                             carCurrent = data.carDict[self.carSequeue[direction][j]]
+                            if car.carNo == carCurrent.carNo:
+                                exit(1)
                             #现在队列里只有非优先车辆，而且是按照车道数从小到大，位置从大到小遍历的
                             #因此，车道数相同，一定是队列中的优先级高，车道不同时，位置大的优先级高
                             if car.laneNo == carCurrent.laneNo:
@@ -240,6 +244,7 @@ class Road():
                             elif car.position <= carCurrent.position:
                                 self.carSequeue[direction].insert(j,car.carNo)
                                 break
+                            j += 1
                         if j == len(self.carSequeue[direction]):
                             self.carSequeue[direction].append(car.carNo)
             for laneNo in range(self.laneNum):
@@ -250,17 +255,21 @@ class Road():
                         j = 0
                         while j < len(self.carSequeue[direction]):
                             carCurrent = data.carDict[self.carSequeue[direction][j]]
-                            #车道相同时，一定是已经在队列中的车辆优先级高
+                            #车道相同时，比较位置
                             if car.laneNo == carCurrent.laneNo:
-                                self.carSequeue[direction].insert(j,car.carNo)
-                                break
+                                if car.position < carCurrent.position:
+                                    self.carSequeue[direction].insert(j,car.carNo)
+                                    break
                             #车道不同时，按照优先车辆一定比非优先车辆的优先级高插入即可
-                            #那么如果待插入优先车辆的车道数较小，优先级一定较高
-                            #如果带插入优先车辆的车道数大于队列中优先车辆的车道数，再比较位置
+                            #因为如果待插入优先车辆的车道数较小，优先级一定比非优先车辆高:
+                            #如果该优先车辆前无非优先车辆阻挡，优先车辆优先级比其他车道的非优先车辆高；
+                            #如果该优先车辆前有非优先车辆阻挡，该优先车辆的优先级在前方的非优先车辆之后，由上一种状况确定；
+                            #如果待插入优先车辆的车道数大于队列中优先车辆的车道数，再比较位置
                             elif car.laneNo > carCurrent.laneNo and carCurrent.isPriority:
                                 if car.position <= carCurrent.position:
                                     self.carSequeue[direction].insert(j,car.carNo)
                                     break
+                            j += 1
                         if j == len(self.carSequeue[direction]):
                             self.carSequeue[direction].append(car.carNo)
 
@@ -348,20 +357,24 @@ class Cross():
         '''
         for roadNo in self.roads:
             if roadNo != -1:
-                data.roadDict[roadNo].createCarSequeue()
+                data.roadDict[roadNo].createCarSequeue(dire=self.roadsDirections[roadNo])
 
     def updateRoads(self,timeNow):
         '''
         按照id从小到大的顺序遍历道路；
         '''
-        self.sortWaitingCarsOnEachRoad()
+        roadsDoneNum = 0
         for roadNo in sorted(self.roads):
-            if roadNo == -1: continue
+            if roadNo == -1: 
+                roadsDoneNum += 1
+                continue
             direction = self.roadsDirections[roadNo]
             road = data.roadDict[roadNo]
             while True:
                 carNo = road.getCarFromSequeue(direction)
-                if carNo == None: break
+                if carNo == None: 
+                    roadsDoneNum += 1
+                    break
                 car = data.carDict[carNo]
                 if car.getNextRoad() == -1:  #当前车辆即将到达终点，视为直行，在道路内的函数进行处理
                     road.updateCars(timeNow,direction,car.laneNo)
@@ -399,21 +412,27 @@ class Cross():
                             else:
                                 break
                         elif nextRoadFreeDistance >= distanceOnNextRoad:
-                            road.carOut(car.laneNo,direction)
-                            road.updateCars(timeNow,direction,car.laneNo)
+                            preLaneNo = car.laneNo
                             car.moveToNextRoad(distanceOnNextRoad,nextRoadLaneNo)
                             car.endWaiting()
+                            road.carOut(preLaneNo,direction)
+                            road.updateCars(timeNow,direction,preLaneNo)
                             nextRoad.carIn(car.carNo,nextRoadLaneNo,nextRoadDirection)
                             nextRoad.runCarInInitList(timeNow,True,dire=nextRoadDirection)
                         elif nextRoadStatus == True:
-                            road.carOut(car.laneNo,direction)
-                            road.updateCars(timeNow,direction,car.laneNo)
+                            preLaneNo = car.laneNo
                             car.moveToNextRoad(nextRoadFreeDistance,nextRoadLaneNo)
                             car.endWaiting()
+                            road.carOut(preLaneNo,direction)
+                            road.updateCars(timeNow,direction,preLaneNo)
                             nextRoad.carIn(car.carNo,nextRoadLaneNo,nextRoadDirection)
                             nextRoad.runCarInInitList(timeNow,True,dire=nextRoadDirection)
                         else:
                             break
+        if roadsDoneNum == 4:
+            return 1
+        else:
+            return 0
 
 class Car():
 
@@ -424,7 +443,7 @@ class Car():
         self.maxSpeed = maxSpeed    #车辆自身最大速度
         self.planTime = planTime    #车辆计划出发时间
         self.waiting = False        #该车辆是否处于等待状态，True代表处于等待状态
-        self.finish = False         #True代表该车进入终止状态
+        self.finish = True         #True代表该车进入终止状态
         self.position = -1          #该车辆在车道上的位置,取值范围为[1,roadLen]
         self.laneNo = -1
         self.roadNo = -1

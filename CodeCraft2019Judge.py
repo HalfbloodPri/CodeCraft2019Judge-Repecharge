@@ -33,9 +33,9 @@ def main():
     scheduleTime = 1
     while data.carsDoneNum < len(data.carList):
         method.runTheMap(scheduleTime)
-        print(scheduleTime)
+        print('Time: %d' % scheduleTime)
         scheduleTime += 1
-    print('Dine.')
+    print('Done.')
 
 
 if __name__ == "__main__":
