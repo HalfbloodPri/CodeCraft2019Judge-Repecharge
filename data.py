@@ -10,3 +10,6 @@ roadList = list()
 carDict = dict()    
 carList = list()
 carsDoneNum = 0     #已经行驶完毕的车辆
+
+#车辆的等待链，用于判断是否发生了锁死
+waitingChain = None

@@ -70,6 +70,10 @@ class Road():
                         if statusAhead == 1:
                             car.startWaiting()
                             roadEnd = car.position
+                            #如果是因为前方有等待车辆而进入等待状态，则加入到等待链中
+                            if i < (carNum-1):
+                                data.waitingChain.addToWaitingChain(self.lanes[direction][laneNo][i],\
+                                    self.lanes[direction][laneNo][i+1])
                         else:
                             car.setPosition(roadEnd-1)
                             roadEnd = roadEnd-1
@@ -377,6 +381,7 @@ class Cross():
                     break
                 car = data.carDict[carNo]
                 if car.getNextRoad() == -1:  #当前车辆即将到达终点，视为直行，在道路内的函数进行处理
+                    data.waitingChain.addToWaitingChain(carNo,None)
                     road.updateCars(timeNow,direction,car.laneNo)
                 else:
                     turnDirection = self.DLR.value(roadNo,car.getNextRoad())  #1:直行，2：左转，3：右转
@@ -390,6 +395,7 @@ class Cross():
                         if otherCar.getNextRoad() != car.getNextRoad(): continue
                         otherTurnDirection = self.DLR.value(otherRoadNo,otherCar.getNextRoad())
                         if otherTurnDirection < turnDirection: 
+                            data.waitingChain.addToWaitingChain(carNo,otherCarNo)
                             conflict = True
                             break
                     if conflict: break
@@ -443,6 +449,11 @@ class Car():
         self.maxSpeed = maxSpeed    #车辆自身最大速度
         self.planTime = planTime    #车辆计划出发时间
         self.waiting = False        #该车辆是否处于等待状态，True代表处于等待状态
+        #出于等待状态时，等待的原因；None表示原因尚未确定或前方无等待车辆，因要通过路口而进入等待
+        #当前方有等待车辆时，reason就是前方等待车辆的编号
+        self.waitingReason = None
+        self.inChain = False    #标记是否在等待链中
+        self.chainNo = None     #所在等待链的编号
         self.finish = True         #True代表该车进入终止状态
         self.position = -1          #该车辆在车道上的位置,取值范围为[1,roadLen]
         self.laneNo = -1
@@ -474,6 +485,7 @@ class Car():
         '''
         self.waiting = False
         self.finish = True
+        data.waitingChain.removeFromWaitingChain(self.carNo)
 
     def setSetOffTime(self,time):
         self.setOffTime = time
@@ -492,6 +504,85 @@ class Car():
             return self.path[self.nextRoad]
         else:
             return -1   #-1表示该车前方就是目的路口，不再需要进入下一道路
+
+    def setWaitingChain(self,reason,inChain,chainNo):
+        self.waitingReason = reason
+        self.inChain = inChain
+        self.chainNo = chainNo
+
+class WaitingChain():
+    '''
+    存储图中的所有等待链，判断是否有锁死发生；
+    对于任何一个等待链来说，列表尾部是被等待车辆，列表首部是等待车辆；
+    当发现新的等待对时，不管新的两辆车在列表中是否已经存在，都要保证被等待车辆比等待车辆靠近尾部；
+    只有当循环等待（锁死）出现时，上面的情况才无法保证；这时判定锁死发生；
+    '''
+
+    def __init__(self):
+        self.chain = dict()
+        self.chainNum = 0   #已创建等待链的数目，由于会出现等待链的合并，因此该数大于999999时重置；
+
+    def addToWaitingChain(self,carCurrentNo,carFrontNo):
+        if carCurrentNo == 63671 or carFrontNo == 63671:
+            time.sleep(1)
+        carCurrent = data.carDict[carCurrentNo]
+        #carFront不在链中且为None
+        if carFrontNo == None:
+            #而且当前车辆也不在链中，那么创建新链，如果当前车辆在链中，更新一下信息
+            if not carCurrent.inChain:
+                self.chain.update({self.chainNum:list([carCurrentNo])})
+                carCurrent.setWaitingChain(carFrontNo,True,self.chainNum)
+                self.chainNum += 1
+                if self.chainNum > 999999:
+                    self.chainNum = 0
+            else:
+                carCurrent.setWaitingChain(None,True,carCurrent.chainNo)
+        else:
+            carFront = data.carDict[carFrontNo]
+            if carFront.inChain and carCurrent.inChain:
+                #两车都在链中,要么两车在同一链中，要么两车分别在不同链的首尾
+                #如果在同一链中，根据前后关系判断是否死锁，如果在不同链中，合并两条链
+                if carFront.chainNo == carCurrent.chainNo:
+                    if self.chain[carCurrent.chainNo].index(carFrontNo) < self.chain[carCurrent.chainNo].index(carCurrentNo):
+                        exit('Dead lock!')
+                else:
+                    self.chain[carCurrent.chainNo].extend(self.chain[carFront.chainNo])
+                    carCurrent.setWaitingChain(carFrontNo,True,carCurrent.chainNo)
+                    preChainNo = carFront.chainNo
+                    for carNo in self.chain[carFront.chainNo]:
+                        car = data.carDict[carNo]
+                        car.setWaitingChain(car.waitingReason,True,carCurrent.chainNo)
+                    self.chain.pop(preChainNo)
+            #只有被等待车辆在链中
+            elif carFront.inChain and (not carCurrent.inChain):
+                self.chain[carFront.chainNo].insert(0,carCurrentNo)
+                carCurrent.setWaitingChain(carFrontNo,True,carFront.chainNo)
+            #只有等待车辆在链中
+            elif carCurrent.inChain and (not carFront.inChain):
+                self.chain[carCurrent.chainNo].append(carFrontNo)
+                carFront.setWaitingChain(None,True,carCurrent.chainNo)
+            #两车都不在链中
+            else:
+                self.chain.update({self.chainNum:list([carCurrentNo,carFrontNo])})
+                carCurrent.setWaitingChain(carFrontNo,True,self.chainNum)
+                carFront.setWaitingChain(None,True,self.chainNum)
+                self.chainNum += 1
+                if self.chainNum > 999999:
+                    self.chainNum = 0
+        print(self.chain)
+
+    def removeFromWaitingChain(self,carNo):
+        '''
+        当有一辆车从等待状态变为终止状态之后，它一定不会参与锁死，并且一定处于等待链的末尾，
+        我们需要把它从等待链中去除；
+        '''
+        car = data.carDict[carNo]
+        if car.inChain:
+            self.chain[car.chainNo].pop()
+            if self.chain[car.chainNo] == []:
+                self.chain.pop(car.chainNo)
+            car.setWaitingChain(None,False,None)
+        print(self.chain)
 
 #二维字典
 class TwoDDict():

@@ -141,6 +141,8 @@ def readData(roadFilePath,carFilePath,crossFilePath,preAnswerFilePath,answerFile
         cross.confirmRoadsDirection()
     #初始化从每个路口出发的车辆
     initCarsFromEachCross()
+    #初始化等待链
+    data.waitingChain = model.WaitingChain()
 
     logging.info('Initial data:%f' % (time.time()-timeBegin))
 
