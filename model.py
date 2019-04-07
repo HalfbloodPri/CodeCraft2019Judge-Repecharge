@@ -162,15 +162,16 @@ class Road():
                     freeDistance[i] = car.position-1
                     statusAhead.append(car.finish)
             laneNo = 0
-            endCondition = 1    #优先车辆无法进入道路的终止条件：1代表是因为未到达出发时间而无法进入道路，那么非优先车辆仍有机会进入道路；
-            #0代表因为道路没有空位或前方有等待车辆阻挡而无法进入道路，那么非优先车辆因优先级较低，不能进入道路；
+            #先选择第一优先顺位的车进行是否能上路的判断，如果不是因为未到出发时间而无法上路，就要判断第二
+            #优先顺位的车是否可以上路，以此类推，直到遇到因未到出发时间而无法上路的车
+            priorityOrder = 1   
             while laneNo < self.laneNum:
                 if freeDistance[laneNo] == 0:
                     laneNo += 1
                     continue
-                if self.carInInitList[direction][0] == []:
+                if len(self.carInInitList[direction][0]) < priorityOrder:
                     break
-                car = data.carDict[self.carInInitList[direction][0][-1]]       #取优先级最高的一辆优先车辆
+                car = data.carDict[self.carInInitList[direction][0][-priorityOrder]]       #取对应顺位的优先车辆
                 if car.setOffTime > timeNow:
                     break
                 speed = min(car.maxSpeed,self.maxSpeed)
@@ -178,39 +179,38 @@ class Road():
                     freeDistance[laneNo] = speed-1
                     self.carIn(car.carNo,laneNo,direction)
                     car.moveToNextRoad(speed,laneNo)
-                    self.carInInitList[direction][0].pop()
+                    self.carInInitList[direction][0].pop(-priorityOrder)
                 elif statusAhead[laneNo]:   #如果被阻挡，但前车是终止状态
                     self.carIn(car.carNo,laneNo,direction)
                     car.moveToNextRoad(freeDistance[laneNo],laneNo)
                     freeDistance[laneNo] = freeDistance[laneNo]-1
-                    self.carInInitList[direction][0].pop()
-                else:                       #被阻挡，且前车为等待状态，不得上路
-                    endCondition = 0
-                    break
+                    self.carInInitList[direction][0].pop(-priorityOrder)
+                else:
+                    priorityOrder += 1
             if not priority:
-                if endCondition == 1 or laneNo < self.laneNum:
-                    while laneNo < self.laneNum:
-                        if freeDistance[laneNo] == 0:
-                            laneNo += 1
-                            continue
-                        if self.carInInitList[direction][1] == []:
-                            break
-                        car = data.carDict[self.carInInitList[direction][1][-1]]       #取优先级最高的一辆非优先车辆
-                        if car.setOffTime > timeNow:
-                            break
-                        speed = min(car.maxSpeed,self.maxSpeed)
-                        if speed <= freeDistance[laneNo]:   #如果未被阻挡，直接进入道路
-                            freeDistance[laneNo] = speed-1
-                            self.carIn(car.carNo,laneNo,direction)
-                            car.moveToNextRoad(speed,laneNo)
-                            self.carInInitList[direction][1].pop()
-                        elif statusAhead[laneNo]:   #如果被阻挡，但前车是终止状态
-                            self.carIn(car.carNo,laneNo,direction)
-                            car.moveToNextRoad(freeDistance[laneNo],laneNo)
-                            freeDistance[laneNo] = freeDistance[laneNo]-1
-                            self.carInInitList[direction][1].pop()
-                        else:                       #被阻挡，且前车为等待状态，不得上路
-                            break
+                priorityOrder = 1 
+                while laneNo < self.laneNum:
+                    if freeDistance[laneNo] == 0:
+                        laneNo += 1
+                        continue
+                    if len(self.carInInitList[direction][1]) < priorityOrder:
+                        break
+                    car = data.carDict[self.carInInitList[direction][1][-priorityOrder]]       #取对应顺位的非优先车辆
+                    if car.setOffTime > timeNow:
+                        break
+                    speed = min(car.maxSpeed,self.maxSpeed)
+                    if speed <= freeDistance[laneNo]:   #如果未被阻挡，直接进入道路
+                        freeDistance[laneNo] = speed-1
+                        self.carIn(car.carNo,laneNo,direction)
+                        car.moveToNextRoad(speed,laneNo)
+                        self.carInInitList[direction][1].pop(-priorityOrder)
+                    elif statusAhead[laneNo]:   #如果被阻挡，但前车是终止状态
+                        self.carIn(car.carNo,laneNo,direction)
+                        car.moveToNextRoad(freeDistance[laneNo],laneNo)
+                        freeDistance[laneNo] = freeDistance[laneNo]-1
+                        self.carInInitList[direction][1].pop(-priorityOrder)
+                    else:
+                        priorityOrder += 1
     
     def createCarSequeue(self,dire=2):
         '''
