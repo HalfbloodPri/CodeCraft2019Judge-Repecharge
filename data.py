@@ -11,6 +11,10 @@ carDict = dict()
 carList = list()
 carsDoneNum = 0     #已经行驶完毕的车辆
 
-#总调度时间
+#调度时间
+priorityScheduleTime = 0
 allPriorityScheduleTime = 0
+scheduleTime = 0
 allScheduleTime = 0
+
+minPriorityPlanTime = 100000    #优先车辆的最小计划出发时间

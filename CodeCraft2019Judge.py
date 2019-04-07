@@ -30,13 +30,15 @@ def main():
     #answer_path = sys.argv[5]
 
     buildData.readData(road_path,car_path,cross_path,preset_answer_path,answer_path)
-    scheduleTime = 1
+    scheduleTime = 0
     while data.carsDoneNum < len(data.carList):
         method.runTheMap(scheduleTime)
         print('Time: %d' % scheduleTime)
         scheduleTime += 1
     print('Done.')
+    logging.info('Schedule TIme: % d' % data.scheduleTime)
     logging.info('All Schedule Time: %d' % data.allScheduleTime)
+    logging.info('Priority Schedule Time: %d' % (data.priorityScheduleTime-data.minPriorityPlanTime))
     logging.info('All Priority Schedule Time: %d' % data.allPriorityScheduleTime)
 
 

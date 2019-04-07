@@ -55,6 +55,8 @@ def readData(roadFilePath,carFilePath,crossFilePath,preAnswerFilePath,answerFile
             isPreset=carInfo[6])})
         data.carList.append(carInfo[0])
         carsDict.update({carInfo[0]:True})
+        if carInfo[4] < data.minPriorityPlanTime:
+            data.minPriorityPlanTime = carInfo[4]
     data.carList.sort()
 
     #读入路径信息，即preAnswer和answer

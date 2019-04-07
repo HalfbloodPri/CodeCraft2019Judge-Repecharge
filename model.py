@@ -393,6 +393,12 @@ class Cross():
                         if otherCarNo == None: continue
                         otherCar = data.carDict[otherCarNo]
                         if otherCar.getNextRoad() != car.getNextRoad(): continue
+                        if otherCar.isPriority and (not car.isPriority):
+                            car.setWaitingFather(otherCarNo)
+                            conflict = True
+                            break
+                        elif (not otherCar.isPriority) and car.isPriority:
+                            continue
                         otherTurnDirection = self.DLR.value(otherRoadNo,otherCar.getNextRoad())
                         if otherTurnDirection < turnDirection: 
                             car.setWaitingFather(otherCarNo)
@@ -523,8 +529,10 @@ class Car():
 
     def done(self,timeNow):
         data.allScheduleTime += timeNow-self.planTime
+        data.scheduleTime = timeNow
         if self.isPriority:
             data.allPriorityScheduleTime += timeNow-self.planTime
+            data.priorityScheduleTime = timeNow
 
 #二维字典
 class TwoDDict():
