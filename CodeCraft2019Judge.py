@@ -36,6 +36,8 @@ def main():
         print('Time: %d' % scheduleTime)
         scheduleTime += 1
     print('Done.')
+    print('All Schedule Time: %d' % data.allScheduleTime)
+    print('All Priority Schedule Time: %d' % data.allPriorityScheduleTime)
 
 
 if __name__ == "__main__":
