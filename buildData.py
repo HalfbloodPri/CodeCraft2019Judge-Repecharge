@@ -60,7 +60,7 @@ def readData(roadFilePath,carFilePath,crossFilePath,preAnswerFilePath,answerFile
     data.carList.sort()
 
     #读入路径信息，即preAnswer和answer
-    '''
+    
     #先读preAnswer,不需要做合法性判断
     with open(preAnswerFilePath,'r') as preAnswerFile:
         preAnswerData = preAnswerFile.read().splitlines()
@@ -74,7 +74,7 @@ def readData(roadFilePath,carFilePath,crossFilePath,preAnswerFilePath,answerFile
         for j in range(2,len(pathInfo)):
             car.addToPath(pathInfo[j])
         carsDict.pop(pathInfo[0])
-    '''
+    
     #读入answer
     with open(answerFilePath,'r') as answerFile:
         answerData = answerFile.read().splitlines()
@@ -89,8 +89,9 @@ def readData(roadFilePath,carFilePath,crossFilePath,preAnswerFilePath,answerFile
             exit(1)
         #如果车辆已经在preAnswer中，或根本不存在，退出
         if pathInfo[0] not in carsDict:
-            logging.info('Car:%d does not exist in the map or already exists in pre_answer!' % (pathInfo[0]))
-            exit(1)
+            continue
+            #logging.info('Car:%d does not exist in the map or already exists in pre_answer!' % (pathInfo[0]))
+            #exit(1)
         car = data.carDict[pathInfo[0]]
         #如果车辆的实际出发时间小于计划出发时间，退出
         if car.planTime > pathInfo[1]:
@@ -154,7 +155,8 @@ def initCarsFromEachCross():
     每个队列内的优先级按照实际出发时间越早优先级越高，编号越小优先级越高的原则排序；
     优先级越高越靠近列表尾部；
     '''
-    for car in data.carDict.values():
+    for carNo in data.carList:
+        car = data.carDict[carNo]
         road = data.roadDict[car.path[0]]
         cross = data.crossDict[car.fromId]
         roadDirection = cross.roadsDirections[road.roadNo]  #0代表是正向驶入此路，1代表反向驶入此路
@@ -166,14 +168,14 @@ def initCarsFromEachCross():
         i = 0
         while i<(len(sequeue)):
             if data.carDict[sequeue[i]].setOffTime < car.setOffTime:
-                sequeue.insert(i,car.carNo)
+                sequeue.insert(i,carNo)
                 break
             elif data.carDict[sequeue[i]].setOffTime == car.setOffTime \
-                and sequeue[i] < car.carNo:
-                sequeue.insert(i,car.carNo)
+                and sequeue[i] < carNo:
+                sequeue.insert(i,carNo)
                 break
             else:
                 i += 1
         #如果没有在列表中发现优先级比它高的车辆，则直接加入到列表尾部
         if i == len(sequeue):
-            sequeue.append(car.carNo)
+            sequeue.append(carNo)

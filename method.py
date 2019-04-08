@@ -18,8 +18,8 @@ def runOverCross(timeNow):
     return crossesDoneNum
 
 def creatAllCarSequeue():
-    for i in range(len(data.crossList)):
-        data.crossDict[data.crossList[i]].sortWaitingCarsOnEachRoad()
+    for i in range(len(data.roadList)):
+        data.roadDict[data.roadList[i]].createCarSequeue()
 
 def driveCarInInitList(timeNow):
     for i in range(len(data.roadList)):
