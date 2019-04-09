@@ -40,6 +40,11 @@ def main():
     logging.info('All Schedule Time: %d' % data.allScheduleTime)
     logging.info('Priority Schedule Time: %d' % (data.priorityScheduleTime-data.minPriorityPlanTime))
     logging.info('All Priority Schedule Time: %d' % data.allPriorityScheduleTime)
+    logging.info('Final Schedule Time: %d' % int(data.a*(data.priorityScheduleTime-data.minPriorityPlanTime)\
+        +data.scheduleTime))
+    logging.info('Final All Schedule Time: %d' % int(data.b*data.allPriorityScheduleTime\
+        +data.allScheduleTime))
+    #method.logCarLeaveAndEndTime('map1train.txt')
 
 
 if __name__ == "__main__":

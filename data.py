@@ -17,4 +17,19 @@ allPriorityScheduleTime = 0
 scheduleTime = 0
 allScheduleTime = 0
 
+#用于计算系数的一些参数
+priorityCarNum = 0
+maxSpeed = 0
+minSpeed = 100000
+maxPrioritySpeed = 0
+minPrioritySpeed = 100000
+maxPlanTime = 0
+minPlanTime = 100000
+maxPriorityPlanTime = 0
 minPriorityPlanTime = 100000    #优先车辆的最小计划出发时间
+fromIds = dict()
+toIds = dict()
+priorityFromIds = dict()
+priorityToIds = dict()
+a = None
+b = None

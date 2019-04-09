@@ -55,9 +55,38 @@ def readData(roadFilePath,carFilePath,crossFilePath,preAnswerFilePath,answerFile
             isPreset=carInfo[6])})
         data.carList.append(carInfo[0])
         carsDict.update({carInfo[0]:True})
-        if carInfo[4] < data.minPriorityPlanTime:
-            data.minPriorityPlanTime = carInfo[4]
+        if carInfo[5]:
+            if carInfo[3] < data.minPrioritySpeed:
+                data.minPrioritySpeed = carInfo[3]
+            if carInfo[3] > data.maxPrioritySpeed:
+                data.maxPrioritySpeed = carInfo[3]
+            if carInfo[4] < data.minPriorityPlanTime:
+                data.minPriorityPlanTime = carInfo[4]
+            if carInfo[4] > data.maxPriorityPlanTime:
+                data.maxPriorityPlanTime = carInfo[4]
+            data.priorityFromIds.update({carInfo[1]:True})
+            data.priorityToIds.update({carInfo[2]:True})
+            data.priorityCarNum += 1
+        if carInfo[3] < data.minSpeed:
+            data.minSpeed = carInfo[3]
+        if carInfo[3] > data.maxSpeed:
+            data.maxSpeed = carInfo[3]
+        if carInfo[4] < data.minPlanTime:
+            data.minPlanTime = carInfo[4]
+        if carInfo[4] > data.maxPlanTime:
+            data.maxPlanTime = carInfo[4]
+        data.fromIds.update({carInfo[1]:True})
+        data.toIds.update({carInfo[2]:True})
     data.carList.sort()
+    #计算系数
+    data.a = 0.05*round((len(data.carList)/data.priorityCarNum),5)+0.2375*round((data.maxSpeed/data.minSpeed)/\
+        (data.maxPrioritySpeed/data.minPrioritySpeed),5)+0.2375*round((data.maxPlanTime/data.minPlanTime)/\
+        (data.maxPriorityPlanTime/data.minPriorityPlanTime),5)+0.2375*round(len(data.fromIds)/\
+        len(data.priorityFromIds),5)+0.2375*round(len(data.toIds)/len(data.priorityToIds),5)
+    data.b = 0.8*round((len(data.carList)/data.priorityCarNum),5)+0.05*round((data.maxSpeed/data.minSpeed)/\
+        (data.maxPrioritySpeed/data.minPrioritySpeed),5)+0.05*round((data.maxPlanTime/data.minPlanTime)/\
+        (data.maxPriorityPlanTime/data.minPriorityPlanTime),5)+0.05*round(len(data.fromIds)/\
+        len(data.priorityFromIds),5)+0.05*round(len(data.toIds)/len(data.priorityToIds),5)
 
     #读入路径信息，即preAnswer和answer
     
