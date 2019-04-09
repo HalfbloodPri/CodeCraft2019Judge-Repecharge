@@ -22,6 +22,14 @@ class Road():
         self.freeDistance = self.roadLen*np.ones((2,self.laneNum))
         self.statusAhead = [[True for i in range(self.laneNum)] for j in range(2)]
 
+    #该方向上所有车道的第一辆等待车辆的等待父节点都设为该值；
+    def setWaitingFather(self,direction,waitingFather):
+        for i in range(self.laneNum):
+            if self.lanes[direction][i] == []: continue
+            firstCar = data.carDict[self.lanes[direction][i][-1]]
+            if firstCar.waiting:
+                firstCar.setWaitingFather(waitingFather)
+
     def initLanes(self):
         '''
         初始化此道路上各个车道的车辆情况;
@@ -191,8 +199,8 @@ class Road():
                     break
                 speed = min(car.maxSpeed,self.maxSpeed)
                 if speed <= self.freeDistance[direction][laneNo]:   #如果未被阻挡，直接进入道路
-                    self.carIn(car.carNo,laneNo,direction)
                     car.moveToNextRoad(speed,laneNo)
+                    self.carIn(car.carNo,laneNo,direction)
                     self.carInInitList[direction][0].pop(-priorityOrder)
                 elif self.statusAhead[direction][laneNo]:   #如果被阻挡，但前车是终止状态
                     car.moveToNextRoad(self.freeDistance[direction][laneNo],laneNo)
@@ -213,8 +221,8 @@ class Road():
                         break
                     speed = min(car.maxSpeed,self.maxSpeed)
                     if speed <= self.freeDistance[direction][laneNo]:   #如果未被阻挡，直接进入道路
-                        self.carIn(car.carNo,laneNo,direction)
                         car.moveToNextRoad(speed,laneNo)
+                        self.carIn(car.carNo,laneNo,direction)
                         self.carInInitList[direction][1].pop(-priorityOrder)
                     elif self.statusAhead[direction][laneNo]:   #如果被阻挡，但前车是终止状态
                         car.moveToNextRoad(self.freeDistance[direction][laneNo],laneNo)
@@ -283,13 +291,18 @@ class Road():
         '''
         返回此道路某方向驶入道路端最左侧的有空位的车道的车道编号、空白距离以及最后一辆车的状态；
         '''
-        endCarsStatus = True    #当道路满时，判断是否为终止满,True代表终止满
         for i in range(self.laneNum):
             if self.freeDistance[direction][i] == 0 and self.statusAhead[direction][i] == True:
                 continue
             else:
-                return (i,self.freeDistance[direction][i],self.statusAhead[direction][i])
-        return (None,None,endCarsStatus)
+                #找出该车道最后一辆车的编号
+                if self.lanes[direction][i] == []:
+                    lastCarNo = None
+                else:
+                    lastCarNo = self.lanes[direction][i][0]
+                return (i,self.freeDistance[direction][i],self.statusAhead[direction][i],lastCarNo)
+        #终止满
+        return (None,None,True,None)
 
     def updateCarSequeue(self,direction):
         '''
@@ -380,14 +393,14 @@ class Cross():
                         otherCar = data.carDict[otherCarNo]
                         if otherCar.getNextRoad() != car.getNextRoad(): continue
                         if otherCar.isPriority and (not car.isPriority):
-                            car.setWaitingFather(otherCarNo)
+                            road.setWaitingFather(direction,otherCarNo)
                             conflict = True
                             break
                         elif (not otherCar.isPriority) and car.isPriority:
                             continue
                         otherTurnDirection = self.DLR.value(otherRoadNo,otherCar.getNextRoad())
                         if otherTurnDirection < turnDirection: 
-                            car.setWaitingFather(otherCarNo)
+                            road.setWaitingFather(direction,otherCarNo)
                             conflict = True
                             break
                     if conflict: break
@@ -401,7 +414,7 @@ class Cross():
                     else:
                         #判断是否能驶入下一道路最左侧的有空位的车道
                         nextRoadDirection = 1-self.roadsDirections[nextRoad.roadNo]
-                        nextRoadLaneNo,nextRoadFreeDistance,nextRoadStatus = nextRoad.getRoomOfTheEnd(nextRoadDirection)
+                        nextRoadLaneNo,nextRoadFreeDistance,nextRoadStatus,nextRoadLastCar = nextRoad.getRoomOfTheEnd(nextRoadDirection)
                         if nextRoadLaneNo == None:      #终止满
                             car.setPosition(road.roadLen)
                             car.endWaiting()
@@ -420,7 +433,8 @@ class Cross():
                             road.carOut(preLaneNo,direction)
                             road.updateCars(timeNow,direction,preLaneNo)
                             nextRoad.carIn(car.carNo,nextRoadLaneNo,nextRoadDirection)
-                        else:
+                        else:   #如果被等待车辆阻挡了，设置一下waitingFather
+                            road.setWaitingFather(direction,nextRoadLastCar)
                             break
         if roadsDoneNum == 4:
             return 1
@@ -440,7 +454,7 @@ class Car():
         #当前方有等待车辆时，father就是前方等待车辆的编号
         self.waitingFather = None
         self.finish = True         #True代表该车进入终止状态
-        self.position = -1          #该车辆在车道上的位置,取值范围为[1,roadLen]
+        self.position = 0          #该车辆在车道上的位置,取值范围为[1,roadLen]
         self.laneNo = -1
         self.roadNo = -1
         self.setOffTime = self.planTime     #该车辆的出发时间
@@ -501,6 +515,7 @@ class Car():
                 logging.info('Car: %d, Road: %d' % (self.carNo,self.roadNo))
                 father = firstFather
                 while True:
+                    father = data.carDict[father].waitingFather
                     fatherCar = data.carDict[father]
                     logging.info('Car: %d, Road: %d' % (father,fatherCar.roadNo))
                     if father == self.carNo:
