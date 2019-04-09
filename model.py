@@ -113,12 +113,13 @@ class Road():
         #优先车辆上路
         self.runCarInInitList(timeNow,True)
     
-    def updateCars(self,timeNow,direction,laneNo,skipCars=0):
+    def updateCars(self,timeNow,direction,laneNo,skipCars=0,allowEnd=True):
         '''
         遍历某方向某车道上的车；因为此函数是在路口循环内调用的，因此直行即可到达终点的车辆直接终止移除；
         skipCars:遍历该车道时，跳过车道尾部0或1辆车；0就是正常情况；1是因为下一道路限速太低或没有空位导
         致本应通过路口的尾部车辆未能通过路口，该车辆将行驶到当前道路的最前端，并置为终止状态，因此在本过程中
         应跳过该车辆；
+        allowEnd:True表示允许车辆在此函数中到达终点
         '''
         lane = self.lanes[direction][laneNo]
         carNum = len(lane)     #该车道上的车辆数目
@@ -135,7 +136,8 @@ class Road():
                 newPosition = car.position + speed
                 #如果车辆驶出能行驶的最大位置，则继续等待，除非已到达终点但是每次只能有一辆车到达终点
                 if newPosition >= roadEnd:
-                    if (car.getNextRoad() == -1) and (roadEnd == (self.roadLen + 1)) and (carsReachEnding == 0):
+                    if (car.getNextRoad() == -1) and (roadEnd == (self.roadLen + 1)) and\
+                         (carsReachEnding == 0) and allowEnd:
                         carsReachEnding += 1
                         car.done(timeNow)
                         statusAhead == 1
@@ -200,10 +202,12 @@ class Road():
                 speed = min(car.maxSpeed,self.maxSpeed)
                 if speed <= self.freeDistance[direction][laneNo]:   #如果未被阻挡，直接进入道路
                     car.moveToNextRoad(speed,laneNo)
+                    car.setLeaveTime(timeNow)
                     self.carIn(car.carNo,laneNo,direction)
                     self.carInInitList[direction][0].pop(-priorityOrder)
                 elif self.statusAhead[direction][laneNo]:   #如果被阻挡，但前车是终止状态
                     car.moveToNextRoad(self.freeDistance[direction][laneNo],laneNo)
+                    car.setLeaveTime(timeNow)
                     self.carIn(car.carNo,laneNo,direction)
                     self.carInInitList[direction][0].pop(-priorityOrder)
                 else:
@@ -222,10 +226,12 @@ class Road():
                     speed = min(car.maxSpeed,self.maxSpeed)
                     if speed <= self.freeDistance[direction][laneNo]:   #如果未被阻挡，直接进入道路
                         car.moveToNextRoad(speed,laneNo)
+                        car.setLeaveTime(timeNow)
                         self.carIn(car.carNo,laneNo,direction)
                         self.carInInitList[direction][1].pop(-priorityOrder)
                     elif self.statusAhead[direction][laneNo]:   #如果被阻挡，但前车是终止状态
                         car.moveToNextRoad(self.freeDistance[direction][laneNo],laneNo)
+                        car.setLeaveTime(timeNow)
                         self.carIn(car.carNo,laneNo,direction)
                         self.carInInitList[direction][1].pop(-priorityOrder)
                     else:
@@ -424,14 +430,14 @@ class Cross():
                             car.moveToNextRoad(distanceOnNextRoad,nextRoadLaneNo)
                             car.endWaiting()
                             road.carOut(preLaneNo,direction)
-                            road.updateCars(timeNow,direction,preLaneNo)
+                            road.updateCars(timeNow,direction,preLaneNo,allowEnd=False)
                             nextRoad.carIn(car.carNo,nextRoadLaneNo,nextRoadDirection)
                         elif nextRoadStatus == True:
                             preLaneNo = car.laneNo
                             car.moveToNextRoad(nextRoadFreeDistance,nextRoadLaneNo)
                             car.endWaiting()
                             road.carOut(preLaneNo,direction)
-                            road.updateCars(timeNow,direction,preLaneNo)
+                            road.updateCars(timeNow,direction,preLaneNo,allowEnd=False)
                             nextRoad.carIn(car.carNo,nextRoadLaneNo,nextRoadDirection)
                         else:   #如果被等待车辆阻挡了，设置一下waitingFather
                             road.setWaitingFather(direction,nextRoadLastCar)
@@ -462,6 +468,8 @@ class Car():
         self.isPreset = isPreset
         self.path = []      #这辆车的路径
         self.nextRoad = 0   #该车辆要进入的下一个道路在path中的编号
+        self.leaveTime = None   #实际出发时间
+        self.endTime = None     #实际到达时间
 
     def setPosition(self,position,laneNo=None):
         '''
@@ -523,8 +531,12 @@ class Car():
                 exit('Dead lock!')
             father = data.carDict[father].waitingFather
 
+    def setLeaveTime(self,timeNow):
+        self.leaveTime = timeNow
+
     def done(self,timeNow):
         self.endWaiting()
+        self.endTime = timeNow
         data.carsDoneNum += 1
         data.allScheduleTime += timeNow-self.planTime
         data.scheduleTime = timeNow
