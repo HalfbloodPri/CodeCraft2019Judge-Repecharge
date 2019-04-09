@@ -275,23 +275,25 @@ class Road():
                         j = 0
                         while j < len(self.carSequeue[direction]):
                             carCurrent = data.carDict[self.carSequeue[direction][j]]
-                            #车道相同时，比较位置
-                            if car.laneNo == carCurrent.laneNo:
-                                if car.position < carCurrent.position:
-                                    self.carSequeue[direction].insert(j,car.carNo)
-                                    break
-                            #车道不同时，按照优先车辆一定比非优先车辆的优先级高插入即可
-                            #因为如果待插入优先车辆的车道数较小，优先级一定比非优先车辆高:
-                            #如果该优先车辆前无非优先车辆阻挡，优先车辆优先级比其他车道的非优先车辆高；
-                            #如果该优先车辆前有非优先车辆阻挡，该优先车辆的优先级在前方的非优先车辆之后，由上一种状况确定；
-                            #如果待插入优先车辆的车道数大于队列中优先车辆的车道数，再比较位置
-                            elif car.laneNo > carCurrent.laneNo and carCurrent.isPriority:
-                                if car.position <= carCurrent.position:
-                                    self.carSequeue[direction].insert(j,car.carNo)
-                                    break
+                            #只考虑车道相同时的情况，比较位置
+                            if car.laneNo == carCurrent.laneNo and car.position < carCurrent.position:
+                                self.carSequeue[direction].insert(j,car.carNo)
+                                break
                             j += 1
-                        if j == len(self.carSequeue[direction]):
-                            self.carSequeue[direction].append(car.carNo)
+                        if j < len(self.carSequeue[direction]): continue
+                        #从列表尾部开始遍历，遇到非优先车辆就插到其后面
+                        #如果在遇到非优先车辆之前遇到了优先级比自己低的优先车辆，插到其后面
+                        j = len(self.carSequeue[direction])-1
+                        while j >= 0:
+                            carCurrent = data.carDict[self.carSequeue[direction][j]]
+                            if not carCurrent.isPriority:
+                                break
+                            elif car.position > carCurrent.position:
+                                break
+                            elif car.position == carCurrent.position and car.laneNo < carCurrent.laneNo:
+                                break
+                            j -= 1
+                        self.carSequeue[direction].insert(j+1,car.carNo)
 
     def getRoomOfTheEnd(self,direction):
         '''
@@ -386,62 +388,70 @@ class Cross():
                     roadsDoneNum += 1
                     break
                 car = data.carDict[carNo]
-                if car.getNextRoad() == -1:  #当前车辆即将到达终点，视为直行，在道路内的函数进行处理
-                    road.updateCars(timeNow,direction,car.laneNo)
+                nextRoadToGo = car.getNextRoad()
+                if nextRoadToGo == -1:  #当前车辆即将到达终点，视为直行
+                    turnDirection = 1
+                    nextRoadToGo = self.roads[self.roads.index(roadNo)-2]
                 else:
                     turnDirection = self.DLR.value(roadNo,car.getNextRoad())  #1:直行，2：左转，3：右转
-                    #判断是否与其他道路上的第一优先级车辆冲突
-                    conflict = False
-                    for otherRoadNo in self.sortedRoads:
-                        if otherRoadNo == -1 or otherRoadNo == roadNo: continue
-                        otherCarNo = data.roadDict[otherRoadNo].getCarFromSequeue(self.roadsDirections[otherRoadNo])
-                        if otherCarNo == None: continue
-                        otherCar = data.carDict[otherCarNo]
-                        if otherCar.getNextRoad() != car.getNextRoad(): continue
-                        if otherCar.isPriority and (not car.isPriority):
-                            road.setWaitingFather(direction,otherCarNo)
-                            conflict = True
-                            break
-                        elif (not otherCar.isPriority) and car.isPriority:
-                            continue
-                        otherTurnDirection = self.DLR.value(otherRoadNo,otherCar.getNextRoad())
-                        if otherTurnDirection < turnDirection: 
-                            road.setWaitingFather(direction,otherCarNo)
-                            conflict = True
-                            break
-                    if conflict: break
-                    #判断是否能顺利进行转向
-                    nextRoad = data.roadDict[car.getNextRoad()]
-                    distanceOnNextRoad = min(nextRoad.maxSpeed,car.maxSpeed)-(road.roadLen-car.position)    #在下一道路应行使的距离
-                    if distanceOnNextRoad <= 0:     #不得通过路口，只能前进到当前道路的最前端
+                if nextRoadToGo == -1:  #即将到达终点，而且对面没有路
+                    road.updateCars(timeNow,direction,car.laneNo)
+                    break
+                #判断是否与其他道路上的第一优先级车辆冲突
+                conflict = False
+                for otherRoadNo in self.sortedRoads:
+                    if otherRoadNo == -1 or otherRoadNo == roadNo: continue
+                    otherCarNo = data.roadDict[otherRoadNo].getCarFromSequeue(self.roadsDirections[otherRoadNo])
+                    if otherCarNo == None: continue
+                    otherCar = data.carDict[otherCarNo]
+                    if otherCar.getNextRoad() != nextRoadToGo: continue
+                    if otherCar.isPriority and (not car.isPriority):
+                        road.setWaitingFather(direction,otherCarNo)
+                        conflict = True
+                        break
+                    elif (not otherCar.isPriority) and car.isPriority:
+                        continue
+                    otherTurnDirection = self.DLR.value(otherRoadNo,otherCar.getNextRoad())
+                    if otherTurnDirection < turnDirection: 
+                        road.setWaitingFather(direction,otherCarNo)
+                        conflict = True
+                        break
+                if conflict: break
+                if car.getNextRoad() == -1:  #当前车辆即将到达终点，在道路内的函数进行处理
+                    road.updateCars(timeNow,direction,car.laneNo)
+                    break
+                #判断是否能顺利进行转向
+                nextRoad = data.roadDict[car.getNextRoad()]
+                distanceOnNextRoad = min(nextRoad.maxSpeed,car.maxSpeed)-(road.roadLen-car.position)    #在下一道路应行使的距离
+                if distanceOnNextRoad <= 0:     #不得通过路口，只能前进到当前道路的最前端
+                    car.setPosition(road.roadLen)
+                    car.endWaiting()
+                    road.updateCars(timeNow,direction,car.laneNo,skipCars=1)
+                else:
+                    #判断是否能驶入下一道路最左侧的有空位的车道
+                    nextRoadDirection = 1-self.roadsDirections[nextRoad.roadNo]
+                    nextRoadLaneNo,nextRoadFreeDistance,nextRoadStatus,nextRoadLastCar = nextRoad.getRoomOfTheEnd(nextRoadDirection)
+                    if nextRoadLaneNo == None:      #终止满
                         car.setPosition(road.roadLen)
                         car.endWaiting()
                         road.updateCars(timeNow,direction,car.laneNo,skipCars=1)
-                    else:
-                        #判断是否能驶入下一道路最左侧的有空位的车道
-                        nextRoadDirection = 1-self.roadsDirections[nextRoad.roadNo]
-                        nextRoadLaneNo,nextRoadFreeDistance,nextRoadStatus,nextRoadLastCar = nextRoad.getRoomOfTheEnd(nextRoadDirection)
-                        if nextRoadLaneNo == None:      #终止满
-                            car.setPosition(road.roadLen)
-                            car.endWaiting()
-                            road.updateCars(timeNow,direction,car.laneNo,skipCars=1)
-                        elif nextRoadFreeDistance >= distanceOnNextRoad:
-                            preLaneNo = car.laneNo
-                            car.moveToNextRoad(distanceOnNextRoad,nextRoadLaneNo)
-                            car.endWaiting()
-                            road.carOut(preLaneNo,direction)
-                            road.updateCars(timeNow,direction,preLaneNo,allowEnd=False)
-                            nextRoad.carIn(car.carNo,nextRoadLaneNo,nextRoadDirection)
-                        elif nextRoadStatus == True:
-                            preLaneNo = car.laneNo
-                            car.moveToNextRoad(nextRoadFreeDistance,nextRoadLaneNo)
-                            car.endWaiting()
-                            road.carOut(preLaneNo,direction)
-                            road.updateCars(timeNow,direction,preLaneNo,allowEnd=False)
-                            nextRoad.carIn(car.carNo,nextRoadLaneNo,nextRoadDirection)
-                        else:   #如果被等待车辆阻挡了，设置一下waitingFather
-                            road.setWaitingFather(direction,nextRoadLastCar)
-                            break
+                    elif nextRoadFreeDistance >= distanceOnNextRoad:
+                        preLaneNo = car.laneNo
+                        car.moveToNextRoad(distanceOnNextRoad,nextRoadLaneNo)
+                        car.endWaiting()
+                        road.carOut(preLaneNo,direction)
+                        road.updateCars(timeNow,direction,preLaneNo,allowEnd=False)
+                        nextRoad.carIn(car.carNo,nextRoadLaneNo,nextRoadDirection)
+                    elif nextRoadStatus == True:
+                        preLaneNo = car.laneNo
+                        car.moveToNextRoad(nextRoadFreeDistance,nextRoadLaneNo)
+                        car.endWaiting()
+                        road.carOut(preLaneNo,direction)
+                        road.updateCars(timeNow,direction,preLaneNo,allowEnd=False)
+                        nextRoad.carIn(car.carNo,nextRoadLaneNo,nextRoadDirection)
+                    else:   #如果被等待车辆阻挡了，设置一下waitingFather
+                        road.setWaitingFather(direction,nextRoadLastCar)
+                        break
         if roadsDoneNum == 4:
             return 1
         else:
