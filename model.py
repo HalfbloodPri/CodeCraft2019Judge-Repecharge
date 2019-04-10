@@ -192,8 +192,11 @@ class Road():
             priorityOrder = 1   
             while laneNo < self.laneNum:
                 if self.freeDistance[direction][laneNo] == 0:
-                    laneNo += 1
-                    continue
+                    if self.statusAhead[direction][laneNo]:
+                        laneNo += 1
+                        continue
+                    else:
+                        break
                 if len(self.carInInitList[direction][0]) < priorityOrder:
                     break
                 car = data.carDict[self.carInInitList[direction][0][-priorityOrder]]       #取对应顺位的优先车辆
@@ -216,8 +219,11 @@ class Road():
                 priorityOrder = 1 
                 while laneNo < self.laneNum:
                     if self.freeDistance[direction][laneNo] == 0:
-                        laneNo += 1
-                        continue
+                        if self.statusAhead[direction][laneNo]:
+                            laneNo += 1
+                            continue
+                        else:
+                            break
                     if len(self.carInInitList[direction][1]) < priorityOrder:
                         break
                     car = data.carDict[self.carInInitList[direction][1][-priorityOrder]]       #取对应顺位的非优先车辆
@@ -246,54 +252,48 @@ class Road():
         else:
             directions = [1]
         for direction in directions:
-            #依次遍历各车道最末尾waiting车辆，比较优先级，优先级高的排在列表尾部
-            #遍历两遍，第一遍先给非优先车辆排序，第二遍再把优先车辆插入进入
+            #标记每个车道遍历到的位置，从尾部开始
+            order = [(len(self.lanes[direction][i])-1) for i in range(self.laneNum)]
+            #首先把每个车道最前面的优先车辆加入到列表中并排序
             for laneNo in range(self.laneNum):
                 for i in range(len(self.lanes[direction][laneNo])-1,-1,-1):
+                    j = 0
                     car = data.carDict[self.lanes[direction][laneNo][i]]
-                    if car.finish: break
-                    if not car.isPriority:
-                        j = 0
-                        while j < len(self.carSequeue[direction]):
-                            carCurrent = data.carDict[self.carSequeue[direction][j]]
-                            #现在队列里只有非优先车辆，而且是按照车道数从小到大，位置从大到小遍历的
-                            #因此，车道数相同，一定是队列中的优先级高，车道不同时，位置大的优先级高
-                            if car.laneNo == carCurrent.laneNo:
-                                self.carSequeue[direction].insert(j,car.carNo)
-                                break
-                            elif car.position <= carCurrent.position:
-                                self.carSequeue[direction].insert(j,car.carNo)
-                                break
-                            j += 1
-                        if j == len(self.carSequeue[direction]):
-                            self.carSequeue[direction].append(car.carNo)
-            for laneNo in range(self.laneNum):
-                for i in range(len(self.lanes[direction][laneNo])-1,-1,-1):
-                    car = data.carDict[self.lanes[direction][laneNo][i]]
-                    if car.finish: break
-                    if car.isPriority:
-                        j = 0
-                        while j < len(self.carSequeue[direction]):
-                            carCurrent = data.carDict[self.carSequeue[direction][j]]
-                            #只考虑车道相同时的情况，比较位置
-                            if car.laneNo == carCurrent.laneNo and car.position < carCurrent.position:
-                                self.carSequeue[direction].insert(j,car.carNo)
-                                break
-                            j += 1
-                        if j < len(self.carSequeue[direction]): continue
-                        #从列表尾部开始遍历，遇到非优先车辆就插到其后面
-                        #如果在遇到非优先车辆之前遇到了优先级比自己低的优先车辆，插到其后面
-                        j = len(self.carSequeue[direction])-1
-                        while j >= 0:
-                            carCurrent = data.carDict[self.carSequeue[direction][j]]
-                            if not carCurrent.isPriority:
-                                break
-                            elif car.position > carCurrent.position:
-                                break
-                            elif car.position == carCurrent.position and car.laneNo < carCurrent.laneNo:
-                                break
-                            j -= 1
-                        self.carSequeue[direction].insert(j+1,car.carNo)
+                    if (not car.isPriority) or car.finish: break
+                    order[laneNo] -= 1
+                    while j < len(self.carSequeue[direction]):
+                        carInTheSequeue = data.carDict[self.carSequeue[direction][j]]
+                        if carInTheSequeue.position >= car.position:
+                            break
+                        j += 1
+                    self.carSequeue[direction].insert(j,car.carNo)
+            #现在每个车道最前面都是非优先车辆了
+            while True:     #车道中仍有未加入队列的等待车辆
+                #找到第一辆车的优先级最高的车道
+                laneNo = None
+                for i in range(self.laneNum):
+                    if order[i] == -1:  #该车道已经没有等待车辆了
+                        continue
+                    if data.carDict[self.lanes[direction][i][order[i]]].finish:
+                        order[i] = -1
+                        continue
+                    if laneNo == None: 
+                        laneNo = i
+                        continue
+                    if data.carDict[self.lanes[direction][i][order[i]]].position > \
+                        data.carDict[self.lanes[direction][laneNo][order[laneNo]]].position:
+                        laneNo = i
+                #所有车道都没有等待车辆了
+                if laneNo == None: break
+                #把该车插入队列首部
+                self.carSequeue[direction].insert(0,self.lanes[direction][laneNo][order[laneNo]])
+                order[laneNo] -= 1
+                #遍历该车道，只把优先车辆加入队列首部
+                while order[laneNo] != -1 and data.carDict[self.lanes[direction]\
+                    [laneNo][order[laneNo]]].waiting and data.carDict[self.lanes\
+                    [direction][laneNo][order[laneNo]]].isPriority:
+                    self.carSequeue[direction].insert(0,self.lanes[direction][laneNo][order[laneNo]])
+                    order[laneNo] -= 1
 
     def getRoomOfTheEnd(self,direction):
         '''
